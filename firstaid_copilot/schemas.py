@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -62,6 +62,81 @@ class QueryResponse(BaseModel):
     retrieval_hits: list[RetrievalHit]
     warnings: list[str]
     used_retrieval_tool: bool
+
+
+class ConversationSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    title: str
+    preview: str
+    updated_at: str
+    turn_count: int
+    model: str
+    profile: ProfileName
+
+
+class ConversationMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    role: Literal["user", "assistant"]
+    text: str
+    timestamp: str
+    sources: list[RetrievalHit] | None = None
+    warnings: list[str] | None = None
+
+
+class ConversationThread(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    title: str
+    messages: list[ConversationMessage]
+
+
+class ConversationTraceMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["human", "assistant", "tool"]
+    content: str
+    name: str | None = None
+    tool_call_id: str | None = None
+    tool_calls: list[dict[str, Any]] | None = None
+
+
+class ConversationTurnRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    turn_id: str
+    timestamp: str
+    user_query: str
+    model: str
+    profile: ProfileName
+    risk_category: str
+    retrieval_hits: list[RetrievalHit]
+    final_answer: str
+    warnings: list[str]
+    trace_messages: list[ConversationTraceMessage]
+
+
+StreamEventType = Literal[
+    "session",
+    "status",
+    "retrieval",
+    "token",
+    "warning",
+    "final",
+    "error",
+]
+
+
+class StreamEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: StreamEventType
+    data: dict[str, Any]
 
 
 class ModelStatus(BaseModel):

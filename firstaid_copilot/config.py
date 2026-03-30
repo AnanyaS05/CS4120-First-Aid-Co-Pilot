@@ -11,12 +11,17 @@ load_dotenv()
 
 ProfileName = Literal["experiment", "demo"]
 
-SUPPORTED_MODELS = ("functiongemma", "qwen3:0.6b", "granite4:350m")
+SUPPORTED_MODELS = (
+    "functiongemma",
+    "qwen3:0.6b",
+    "qwen3.5:0.8b",
+    "granite4:350m",
+)
 SUPPORTED_PROFILES = ("experiment", "demo")
 
 
 def normalize_model_name(model_name: str) -> str:
-    model_name = model_name.strip()
+    model_name = model_name.strip().casefold()
     if model_name.endswith(":latest"):
         return model_name[: -len(":latest")]
     return model_name

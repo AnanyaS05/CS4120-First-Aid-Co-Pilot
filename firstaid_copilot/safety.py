@@ -15,7 +15,17 @@ CATEGORY_KEYWORDS = {
     "spinal_injury": ["spinal", "spine", "neck injury", "vertebra"],
     "unconscious": ["unconscious", "unresponsive", "recovery position", "not breathing"],
     "transportation": ["human crutch", "drag", "move", "moving", "ambulance"],
-    "allergies": ["allerg", "epipen", "anaphyla", "reaction", "hive"],
+    "allergies": [
+        "allerg",
+        "epipen",
+        "anaphyla",
+        "reaction",
+        "hive",
+        "rash",
+        "bee sting",
+        "wasp sting",
+        "sting",
+    ],
 }
 
 EMERGENCY_CATEGORIES = {
@@ -37,6 +47,19 @@ EMERGENCY_LANGUAGE_MARKERS = (
     "call for medical help",
 )
 
+BREATHING_DISTRESS_MARKERS = (
+    "difficulty breathing",
+    "trouble breathing",
+    "shortness of breath",
+    "cannot breathe",
+    "can't breathe",
+    "wheez",
+    "swelling of the tongue",
+    "swelling of tongue",
+    "swelling of the throat",
+    "swelling of throat",
+)
+
 
 @dataclass(slots=True)
 class SafetyAssessment:
@@ -53,10 +76,26 @@ def detect_risk_category(text: str) -> str:
     return "other"
 
 
+def _has_emergency_signal(text_lower: str, category: str) -> bool:
+    if any(marker in text_lower for marker in BREATHING_DISTRESS_MARKERS):
+        return True
+    if (
+        category == "allergies"
+        and any(marker in text_lower for marker in ("bee sting", "wasp sting", "sting"))
+        and any(marker in text_lower for marker in ("rash", "hive", "allerg", "anaphyla"))
+    ):
+        return True
+    return False
+
+
 def assess_query(text: str) -> SafetyAssessment:
     category = detect_risk_category(text)
     warnings: list[str] = []
-    call_emergency_now = category in EMERGENCY_CATEGORIES
+    text_lower = text.lower()
+    call_emergency_now = (
+        category in EMERGENCY_CATEGORIES
+        or _has_emergency_signal(text_lower, category)
+    )
     if category == "other":
         warnings.append("The request did not clearly match a predefined high-risk category.")
     if call_emergency_now:

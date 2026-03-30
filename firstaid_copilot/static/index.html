@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>First-Aid Co-Pilot</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div>
+            <p class="eyebrow">First-Aid Co-Pilot</p>
+            <h1>Chats</h1>
+          </div>
+          <button id="new-chat-button" class="ghost-button" type="button">New Chat</button>
+        </div>
+        <div id="conversation-list" class="conversation-list" aria-label="Previous chats"></div>
+      </aside>
+
+      <main class="chat-shell">
+        <header class="chat-header">
+          <div>
+            <p class="eyebrow">Local sparse-RAG assistant</p>
+            <h2 id="chat-title">New Chat</h2>
+          </div>
+          <div class="controls">
+            <label class="control">
+              <span>Model</span>
+              <select id="model-select" aria-label="Model"></select>
+            </label>
+            <label class="control">
+              <span>Profile</span>
+              <select id="profile-select" aria-label="Profile">
+                <option value="demo">demo</option>
+                <option value="experiment">experiment</option>
+              </select>
+            </label>
+          </div>
+        </header>
+
+        <section id="messages-panel" class="messages-panel" aria-live="polite">
+          <div id="empty-state" class="empty-state">
+            <p class="eyebrow">Ready</p>
+            <h3>Ask a first-aid question.</h3>
+            <p>Your previous chats will appear in the sidebar and you can continue them at any time.</p>
+          </div>
+          <div id="messages" class="messages"></div>
+        </section>
+
+        <footer class="composer-shell">
+          <div id="status-pill" class="status-pill" hidden>Waiting</div>
+          <div class="composer">
+            <textarea
+              id="message-input"
+              rows="1"
+              placeholder="Describe the first-aid situation..."
+              aria-label="Message input"
+            ></textarea>
+            <button id="send-button" class="send-button" type="button">Send</button>
+          </div>
+        </footer>
+      </main>
+    </div>
+
+    <template id="conversation-item-template">
+      <button class="conversation-item" type="button">
+        <span class="conversation-item__title"></span>
+        <span class="conversation-item__meta"></span>
+        <span class="conversation-item__preview"></span>
+      </button>
+    </template>
+
+    <template id="message-template">
+      <article class="message">
+        <div class="message__meta"></div>
+        <div class="message__bubble">
+          <p class="message__text"></p>
+          <div class="message__details"></div>
+        </div>
+      </article>
+    </template>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>

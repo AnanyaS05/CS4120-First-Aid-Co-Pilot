@@ -142,6 +142,7 @@ The current configured model set is:
 
 - `functiongemma`
 - `qwen3:0.6b`
+- `qwen3.5:0.8b`
 - `granite4:350m`
 
 Notes:
@@ -194,6 +195,7 @@ Examples:
 ```powershell
 ollama pull functiongemma
 ollama pull qwen3:0.6b
+ollama pull qwen3.5:0.8b
 ollama pull granite4:350m
 ```
 
@@ -264,11 +266,18 @@ Optional flags:
 - `--text`
 - `--top-k`
 - `--session-id`
+- `--stream`
 
 Example with explicit retrieval depth:
 
 ```powershell
 .\.venv\Scripts\python.exe -m firstaid_copilot query --model functiongemma --profile demo --top-k 3 --text "How should I help someone with severe bleeding?"
+```
+
+Stream the answer, retrieval updates, and final summary in the terminal:
+
+```powershell
+.\.venv\Scripts\python.exe -m firstaid_copilot query --model qwen3:0.6b --profile demo --top-k 5 --stream --text "Someone is choking and cannot speak"
 ```
 
 ### `serve`
@@ -286,6 +295,7 @@ GET  /health
 GET  /models
 POST /retrieve
 POST /query
+POST /query/stream
 ```
 
 ### `GET /health`
@@ -372,6 +382,35 @@ Invoke-RestMethod -Method Post `
   -Body '{"query":"Someone is choking and cannot speak","model":"qwen3:0.6b","profile":"demo","top_k":3}'
 ```
 
+### `POST /query/stream`
+
+Uses the same request body as `POST /query`, but returns a `text/event-stream` response.
+
+SSE event types:
+
+- `session`
+- `status`
+- `retrieval`
+- `token`
+- `warning`
+- `final`
+- `error`
+
+Important behavior:
+
+- `token` events are not emitted until the service has confirmed real retrieval-tool execution or switched to deterministic fallback
+- `retrieval` events are emitted as soon as tool-backed hits are available
+- `final` carries the full normal `QueryResponse` payload
+
+PowerShell example:
+
+```powershell
+Invoke-WebRequest -Method Post `
+  -Uri http://127.0.0.1:8000/query/stream `
+  -ContentType "application/json" `
+  -Body '{"query":"Someone is choking and cannot speak","model":"qwen3:0.6b","profile":"demo","top_k":3}'
+```
+
 ## Runtime Behavior
 
 ### Retrieval-first agent behavior
@@ -382,6 +421,8 @@ The system prompt explicitly instructs the agent to:
 - stay grounded in retrieved content
 - answer in concise numbered steps
 - mention emergency escalation early for high-risk scenarios
+
+For streaming runs, the service suppresses model text until it has evidence of actual tool execution. This prevents fake tool-call text from leaking directly to the client or terminal.
 
 ### Safety behavior
 
@@ -461,7 +502,8 @@ The test suite covers:
 - TF-IDF tuning and vector store persistence
 - safety checks
 - API shapes
-- service-level retrieval and model alias handling
+- service-level retrieval, model alias handling, and streaming event behavior
+- CLI streaming rendering
 
 ## Troubleshooting
 

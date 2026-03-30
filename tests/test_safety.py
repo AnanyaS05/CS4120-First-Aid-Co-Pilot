@@ -13,3 +13,11 @@ def test_emergency_language_detection():
     assert has_required_emergency_language("Call emergency services now and start CPR.")
     assert not has_required_emergency_language("Start CPR and monitor them closely.")
 
+
+def test_safety_detects_bee_sting_breathing_distress_as_emergency():
+    assessment = assess_query(
+        "I got stung by a bee, and now I have a rash and difficulty breathing."
+    )
+    assert assessment.risk_category == "allergies"
+    assert assessment.call_emergency_now is True
+
