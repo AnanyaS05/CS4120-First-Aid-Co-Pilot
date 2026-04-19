@@ -15,6 +15,7 @@ SPLIT_FILES = {
     "test": "test.csv",
     "full_clean": "full_clean.csv",
     "eval_subset": "eval_subset.csv",
+    "generated_answer_eval": "generated_answer_eval.csv",
     "robustness_test": "robustness_test.csv",
 }
 

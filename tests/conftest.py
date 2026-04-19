@@ -69,6 +69,7 @@ def temp_config(tmp_path: Path) -> AppConfig:
     test = _qa_frame(test_rows)
     full_clean = _qa_frame(full_clean_rows)
     eval_subset = dev.copy()
+    generated_answer_eval = test.copy()
     robustness = pd.DataFrame(
         [
             {
@@ -84,6 +85,7 @@ def temp_config(tmp_path: Path) -> AppConfig:
     test.to_csv(preprocessing_dir / "test.csv", index=False)
     full_clean.to_csv(preprocessing_dir / "full_clean.csv", index=False)
     eval_subset.to_csv(preprocessing_dir / "eval_subset.csv", index=False)
+    generated_answer_eval.to_csv(preprocessing_dir / "generated_answer_eval.csv", index=False)
     robustness.to_csv(preprocessing_dir / "robustness_test.csv", index=False)
 
     return AppConfig(root_dir=tmp_path)

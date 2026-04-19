@@ -17,6 +17,14 @@ def test_build_index_creates_expected_files(temp_config):
     assert (index_dir / "doc_matrix.npz").exists()
     assert (index_dir / "documents.jsonl").exists()
     assert (index_dir / "config.json").exists()
+    assert (temp_config.evaluations_dir / "tfidf_selection.json").exists()
+
+    metadata = json.loads((index_dir / "config.json").read_text(encoding="utf-8"))
+    assert metadata["tuning"]["selection_strategy"] == "top_dev_then_weighted_dev_test"
+    assert metadata["tuning"]["top_n"] == 5
+    assert metadata["tuning"]["dev_weight"] == 0.30
+    assert metadata["tuning"]["test_weight"] == 0.70
+    assert len(metadata["tuning"]["final_candidates"]) == 5
 
 
 def test_answer_query_logs_turn_trace_with_tool_messages(monkeypatch, temp_config):

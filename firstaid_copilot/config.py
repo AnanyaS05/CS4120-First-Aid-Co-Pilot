@@ -36,7 +36,7 @@ class AppConfig:
         default_factory=lambda: os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     )
     default_model: str = field(
-        default_factory=lambda: os.getenv("FIRSTAID_DEFAULT_MODEL", "qwen3:0.6b")
+        default_factory=lambda: os.getenv("FIRSTAID_DEFAULT_MODEL", "qwen3.5:0.8b")
     )
     default_agent_top_k: int = 5
     default_debug_top_k: int = 5
@@ -59,6 +59,10 @@ class AppConfig:
         return self.artifacts_dir / "indexes"
 
     @property
+    def evaluations_dir(self) -> Path:
+        return self.artifacts_dir / "evaluations"
+
+    @property
     def conversations_dir(self) -> Path:
         return self.artifacts_dir / "conversations"
 
@@ -67,6 +71,7 @@ class AppConfig:
 
     def ensure_runtime_dirs(self) -> None:
         self.indexes_dir.mkdir(parents=True, exist_ok=True)
+        self.evaluations_dir.mkdir(parents=True, exist_ok=True)
         self.conversations_dir.mkdir(parents=True, exist_ok=True)
 
     def validate_profile(self, profile: str) -> ProfileName:

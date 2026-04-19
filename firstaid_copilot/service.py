@@ -49,7 +49,9 @@ from .schemas import (
 from .tuning import (
     FALLBACK_HYPERPARAMETERS,
     hyperparameters_to_dict,
-    tune_tfidf,
+    select_tfidf_with_dev_test,
+    selection_result_to_dict,
+    TfidfSelectionResult,
 )
 from .vector_store import TfidfIndexMetadata, TfidfVectorStore
 
@@ -60,6 +62,7 @@ INDEX_REQUIRED_FILES = (
     "config.json",
 )
 MAX_HISTORY_HUMAN_MESSAGES = 5
+TFIDF_EVALUATION_FILENAME = "tfidf_selection.json"
 
 
 def _content_to_text(content: Any) -> str:
@@ -401,6 +404,52 @@ class FirstAidCopilotService:
     def get_conversation_thread(self, session_id: str) -> ConversationThread:
         return self.logger.load_conversation(session_id)
 
+    def _run_tfidf_selection(
+        self,
+        *,
+        train_frame,
+        dev_frame,
+        test_frame,
+        train_documents: list[Any],
+    ) -> TfidfSelectionResult:
+        return select_tfidf_with_dev_test(
+            train_texts=[document.page_content for document in train_documents],
+            train_answers=[str(answer) for answer in train_frame["answer"].tolist()],
+            train_categories=[
+                str(category) for category in train_frame["category"].tolist()
+            ],
+            dev_queries=[str(query) for query in dev_frame["question"].tolist()],
+            dev_answers=[str(answer) for answer in dev_frame["answer"].tolist()],
+            dev_categories=[
+                str(category) for category in dev_frame["category"].tolist()
+            ],
+            test_queries=[str(query) for query in test_frame["question"].tolist()],
+            test_answers=[str(answer) for answer in test_frame["answer"].tolist()],
+            test_categories=[
+                str(category) for category in test_frame["category"].tolist()
+            ],
+        )
+
+    def _save_tfidf_selection(self, selection_result: TfidfSelectionResult) -> Path:
+        self.config.evaluations_dir.mkdir(parents=True, exist_ok=True)
+        path = self.config.evaluations_dir / TFIDF_EVALUATION_FILENAME
+        with path.open("w", encoding="utf-8") as handle:
+            json.dump(selection_result_to_dict(selection_result), handle, indent=2)
+        return path
+
+    def evaluate_tfidf(self) -> tuple[TfidfSelectionResult, Path]:
+        train_frame = load_split_dataframe(self.config, "train")
+        dev_frame = load_split_dataframe(self.config, "dev")
+        test_frame = load_split_dataframe(self.config, "test")
+        train_documents = build_documents(train_frame, "train")
+        selection_result = self._run_tfidf_selection(
+            train_frame=train_frame,
+            dev_frame=dev_frame,
+            test_frame=test_frame,
+            train_documents=train_documents,
+        )
+        return selection_result, self._save_tfidf_selection(selection_result)
+
     def build_index(self, profile: str, *, force: bool = False) -> Path:
         validated_profile = self.config.validate_profile(profile)
         index_dir = self.config.index_dir(validated_profile)
@@ -410,37 +459,25 @@ class FirstAidCopilotService:
         source_split = get_profile_source_split(validated_profile)
         train_frame = load_split_dataframe(self.config, "train")
         dev_frame = load_split_dataframe(self.config, "dev")
+        test_frame = load_split_dataframe(self.config, "test")
         train_documents = build_documents(train_frame, "train")
 
         try:
-            tuning_result = tune_tfidf(
-                train_texts=[document.page_content for document in train_documents],
-                train_answers=[str(answer) for answer in train_frame["answer"].tolist()],
-                train_categories=[
-                    str(category) for category in train_frame["category"].tolist()
-                ],
-                train_doc_ids=[
-                    str(document.metadata["doc_id"]) for document in train_documents
-                ],
-                dev_queries=[str(query) for query in dev_frame["question"].tolist()],
-                dev_answers=[str(answer) for answer in dev_frame["answer"].tolist()],
-                dev_categories=[
-                    str(category) for category in dev_frame["category"].tolist()
-                ],
+            selection_result = self._run_tfidf_selection(
+                train_frame=train_frame,
+                dev_frame=dev_frame,
+                test_frame=test_frame,
+                train_documents=train_documents,
             )
-            chosen_params = tuning_result.best_params
-            tuning_payload = {
-                "best_score": tuning_result.best_score,
-                "candidate_count": tuning_result.candidate_count,
-                "best_metrics": tuning_result.best_metrics,
-                "best_params": hyperparameters_to_dict(tuning_result.best_params),
-            }
+            self._save_tfidf_selection(selection_result)
+            chosen_params = selection_result.best_params
+            tuning_payload = selection_result_to_dict(selection_result)
         except Exception as exc:
             chosen_params = FALLBACK_HYPERPARAMETERS
             tuning_payload = {
-                "best_score": None,
+                "selection_strategy": "top_dev_then_weighted_dev_test",
+                "best_weighted_score": None,
                 "candidate_count": 0,
-                "best_metrics": {},
                 "best_params": hyperparameters_to_dict(FALLBACK_HYPERPARAMETERS),
                 "error": str(exc),
             }
@@ -485,6 +522,8 @@ class FirstAidCopilotService:
             model=runtime_model_name,
             base_url=self.config.ollama_base_url,
             temperature=0.1,
+            sync_client_kwargs={"timeout": self.config.request_timeout_seconds},
+            async_client_kwargs={"timeout": self.config.request_timeout_seconds},
             validate_model_on_init=False,
         )
 

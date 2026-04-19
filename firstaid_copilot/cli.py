@@ -11,6 +11,7 @@ from rich.console import Console
 from rich.table import Table
 
 from .config import AppConfig
+from .evaluation import run_final_evaluation
 from .schemas import QueryRequest, QueryResponse, RetrievalHit, StreamEvent
 from .service import FirstAidCopilotService
 
@@ -22,6 +23,17 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("doctor")
+    subparsers.add_parser("evaluate-tfidf")
+
+    evaluate = subparsers.add_parser("evaluate")
+    evaluate.add_argument("--profile", choices=("experiment", "demo"), default="demo")
+    evaluate.add_argument("--top-k", type=int, default=5)
+    evaluate.add_argument("--limit", type=int)
+    evaluate.add_argument("--models", nargs="*")
+    evaluate.add_argument("--skip-generated", action="store_true")
+    evaluate.add_argument("--skip-unavailable-models", action="store_true")
+    evaluate.add_argument("--no-force-index", action="store_true")
+    evaluate.add_argument("--request-timeout-seconds", type=float)
 
     build_index = subparsers.add_parser("build-index")
     build_index.add_argument("--profile", choices=("experiment", "demo"), required=True)
@@ -55,6 +67,87 @@ def _render_doctor(service: FirstAidCopilotService) -> None:
     console.print(table)
     console.print("Indexes built:")
     console.print(json.dumps(report.indexes_built, indent=2))
+
+
+def _render_tfidf_evaluation(service: FirstAidCopilotService) -> None:
+    result, path = service.evaluate_tfidf()
+    console.print(f"Saved TF-IDF evaluation at {path}")
+    console.print(f"Selected weighted score: {result.best_weighted_score:.6f}")
+
+    table = Table(title="Top Dev Configurations Re-ranked on Test")
+    table.add_column("Rank")
+    table.add_column("N-gram")
+    table.add_column("min_df")
+    table.add_column("max_df")
+    table.add_column("sublinear_tf")
+    table.add_column("max_features")
+    table.add_column("Dev")
+    table.add_column("Test")
+    table.add_column("Weighted")
+    for index, candidate in enumerate(result.final_candidates, start=1):
+        params = candidate.params
+        table.add_row(
+            str(index),
+            str(params.ngram_range),
+            str(params.min_df),
+            str(params.max_df),
+            str(params.sublinear_tf),
+            str(params.max_features),
+            f"{candidate.dev_score:.6f}",
+            f"{candidate.test_score:.6f}",
+            f"{candidate.weighted_score:.6f}",
+        )
+    console.print(table)
+
+
+def _render_final_evaluation(service: FirstAidCopilotService, args: argparse.Namespace) -> None:
+    if args.request_timeout_seconds is not None:
+        service.config.request_timeout_seconds = args.request_timeout_seconds
+    result = run_final_evaluation(
+        service,
+        models=tuple(args.models) if args.models else None,
+        profile=args.profile,
+        top_k=args.top_k,
+        limit=args.limit,
+        skip_generated=args.skip_generated,
+        skip_unavailable=args.skip_unavailable_models,
+        force_index=not args.no_force_index,
+    )
+    console.print(f"Saved final evaluation summary at {result.summary_path}")
+    console.print(f"Saved TF-IDF test rows at {result.tfidf_rows_path}")
+    if result.generated_rows_path:
+        console.print(f"Saved generated-answer rows at {result.generated_rows_path}")
+
+    tfidf_metrics = result.summary["tfidf_test"]["metrics"]
+    tfidf_table = Table(title="TF-IDF on test.csv")
+    tfidf_table.add_column("Metric")
+    tfidf_table.add_column("Value")
+    for metric_name, value in tfidf_metrics.items():
+        tfidf_table.add_row(metric_name, f"{float(value):.6f}")
+    console.print(tfidf_table)
+
+    generated_summary = result.summary.get("generated_answers")
+    if not generated_summary:
+        return
+
+    model_table = Table(title="Generated Answers on generated_answer_eval.csv")
+    model_table.add_column("Model")
+    model_table.add_column("Answer F1")
+    model_table.add_column("ROUGE-L")
+    model_table.add_column("Emerg Recall")
+    model_table.add_column("Emerg Lang")
+    model_table.add_column("Errors")
+    for model_name, metrics in generated_summary["metrics_by_model"].items():
+        emergency = metrics["emergency_detection"]
+        model_table.add_row(
+            model_name,
+            f"{float(metrics['answer_unigram_f1']):.6f}",
+            f"{float(metrics['answer_rouge_l_f1']):.6f}",
+            f"{float(emergency['recall']):.6f}",
+            f"{float(metrics['emergency_language_inclusion_rate']):.6f}",
+            str(metrics["error_count"]),
+        )
+    console.print(model_table)
 
 
 def _print_sources(hits: list[RetrievalHit]) -> None:
@@ -183,6 +276,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "doctor":
         _render_doctor(service)
+        return 0
+    if args.command == "evaluate-tfidf":
+        _render_tfidf_evaluation(service)
+        return 0
+    if args.command == "evaluate":
+        _render_final_evaluation(service, args)
         return 0
     if args.command == "build-index":
         index_dir = service.build_index(args.profile, force=args.force)
