@@ -20,6 +20,9 @@ If you downloaded the project as a ZIP, unzip it and `cd` into the extracted fol
 
 ### 1. Confirm Data Files
 
+The primary QA corpus comes from the FirstAidQA dataset on Hugging Face:
+`https://huggingface.co/datasets/i-am-mushfiq/FirstAidQA`.
+
 The app expects these preprocessed CSV files under `preprocessing/`:
 
 ```text
