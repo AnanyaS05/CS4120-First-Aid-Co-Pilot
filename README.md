@@ -6,12 +6,12 @@ The system is designed to run without a hosted LLM API. If Ollama is unavailable
 
 ## Quick Start
 
-These commands assume Windows PowerShell and that you are running them from the repository root.
+These commands assume Windows PowerShell and that you are running them from the repository root. The project was developed and tested with Python 3.12 on Windows.
 
 ```powershell
-git clone <repo-url>
+git clone https://github.com/AnanyaS05/CS4120-First-Aid-Co-Pilot.git
 cd CS4120-First-Aid-Co-Pilot
-python -m venv .venv
+py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
@@ -23,7 +23,7 @@ If you downloaded the project as a ZIP, unzip it and `cd` into the extracted fol
 The primary QA corpus comes from the FirstAidQA dataset on Hugging Face:
 `https://huggingface.co/datasets/i-am-mushfiq/FirstAidQA`.
 
-The app expects these preprocessed CSV files under `preprocessing/`:
+The preprocessed CSV files needed to run the app are committed in this repository. A fresh clone should already contain these files under `preprocessing/`:
 
 ```text
 preprocessing/train.csv
@@ -37,6 +37,32 @@ The main QA splits should include:
 
 ```text
 question, answer, source, question_norm, category
+```
+
+To regenerate the preprocessed files from the source dataset, run the notebook:
+
+```text
+preprocessing/firstaid_preprocessing.ipynb
+```
+
+The notebook documents the original preprocessing workflow and writes the CSV splits used by the application. For normal reproduction, you do not need to rerun the notebook unless you intentionally want to rebuild the dataset splits.
+
+### Generated Artifacts
+
+The `artifacts/` directory is generated at runtime and is intentionally ignored by git. A fresh clone will not contain retrieval indexes, evaluation outputs, or conversation logs. These are recreated by the commands below:
+
+```text
+artifacts/indexes/          created by build-index
+artifacts/evaluations/      created by evaluate / evaluate-tfidf
+artifacts/conversations/    created by CLI, API, or UI queries
+```
+
+If you want a completely fresh run, delete generated artifacts first:
+
+```powershell
+Remove-Item -Recurse -Force .\artifacts\indexes -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force .\artifacts\evaluations -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force .\artifacts\conversations -ErrorAction SilentlyContinue
 ```
 
 ### 2. Install And Start Ollama
@@ -174,6 +200,26 @@ To skip generated answers and evaluate only retrieval:
 ```powershell
 .\.venv\Scripts\python.exe -m firstaid_copilot evaluate --skip-generated
 ```
+
+To reproduce the complete four-model generated-answer evaluation, first pull all configured models, then run:
+
+```powershell
+.\.venv\Scripts\python.exe -m firstaid_copilot evaluate `
+  --models functiongemma qwen3:0.6b qwen3.5:0.8b granite4:350m `
+  --profile demo `
+  --top-k 5 `
+  --request-timeout-seconds 20
+```
+
+Useful evaluation options:
+
+- `--limit N`: evaluate only the first `N` generated-answer rows per model for a quick smoke test
+- `--skip-generated`: run TF-IDF retrieval evaluation only
+- `--skip-unavailable-models`: skip models that Ollama does not report as available
+- `--request-timeout-seconds N`: set the per-request Ollama timeout
+- `--no-force-index`: reuse an existing index instead of rebuilding it before generated-answer evaluation
+
+The evaluator checkpoints generated-answer rows to `artifacts/evaluations/final/generated_answer_rows.csv`, so rerunning the same command can resume already completed model/question rows.
 
 ## API Endpoints
 
