@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# Core orchestration: retrieval, local model calls, safety retries, and logging.
+
 import json
 import re
 from collections.abc import AsyncIterator
@@ -66,6 +68,7 @@ TFIDF_EVALUATION_FILENAME = "tfidf_selection.json"
 
 
 def _content_to_text(content: Any) -> str:
+    """Convert model message content into stripped plain text."""
     if isinstance(content, str):
         return content.strip()
     if isinstance(content, list):
@@ -87,6 +90,7 @@ def _content_to_text(content: Any) -> str:
 
 
 def _content_to_chunk_text(content: Any) -> str:
+    """Convert streamed message content into raw chunk text."""
     if isinstance(content, str):
         return content
     if isinstance(content, list):
@@ -108,6 +112,8 @@ def _content_to_chunk_text(content: Any) -> str:
 
 
 def _strip_tool_markup(answer_text: str, *, trim: bool = True) -> str:
+    """Remove accidental tool-call markup from answer text."""
+    # Some local models emit tool XML as plain text; remove it before display/logging.
     cleaned = re.sub(
         r"<search_first_aid_knowledge>.*?</search_first_aid_knowledge>",
         "",
@@ -124,6 +130,7 @@ def _strip_tool_markup(answer_text: str, *, trim: bool = True) -> str:
 
 
 def _extract_steps(answer_text: str) -> list[str]:
+    """Extract up to five concise answer steps."""
     lines = [line.strip() for line in answer_text.splitlines() if line.strip()]
     numbered = []
     for line in lines:
@@ -142,16 +149,19 @@ def _extract_steps(answer_text: str) -> list[str]:
 
 
 def _messages_from_result(result: Any) -> list[Any]:
+    """Extract LangChain messages from an agent result."""
     if isinstance(result, dict):
         return list(result.get("messages", []))
     return []
 
 
 def _used_retrieval_tool(messages: list[Any]) -> bool:
+    """Return whether a tool message appeared in agent messages."""
     return any(isinstance(message, ToolMessage) for message in messages)
 
 
 def _last_ai_text(messages: list[Any]) -> str:
+    """Return the most recent non-empty assistant text."""
     for message in reversed(messages):
         if isinstance(message, AIMessage):
             text = _strip_tool_markup(_content_to_text(message.content))
@@ -164,6 +174,7 @@ def _build_agent_input(
     history_messages: list[BaseMessage],
     query: str,
 ) -> dict[str, Any]:
+    """Build the message payload passed into the LangChain agent."""
     return {"messages": [*history_messages, HumanMessage(content=query)]}
 
 
@@ -172,6 +183,7 @@ def _build_system_prompt(
     call_emergency_now: bool,
     stricter: bool,
 ) -> str:
+    """Build the retrieval-first system prompt for the local agent."""
     prompt = (
         """You are a helpful medical assistant continuing an ongoing conversation.
 
@@ -210,6 +222,7 @@ Escalation and Limits:
 
 
 def _normalize_agent_stream_part(part: Any) -> dict[str, Any]:
+    """Normalize LangChain stream chunks into a consistent dictionary shape."""
     if isinstance(part, dict):
         return part
     if isinstance(part, tuple):
@@ -226,6 +239,7 @@ def _append_trace_message(
     trace_messages: list[ConversationTraceMessage],
     message: BaseMessage,
 ) -> None:
+    """Append a non-duplicate trace message when it can be converted."""
     trace_message = trace_message_from_langchain(message)
     if trace_message is None:
         return
@@ -240,6 +254,7 @@ def _build_turn_trace_messages(
     new_messages: list[BaseMessage],
     answer_text: str,
 ) -> list[ConversationTraceMessage]:
+    """Build trace messages for one non-streaming agent turn."""
     trace_messages: list[ConversationTraceMessage] = [
         ConversationTraceMessage(role="human", content=query)
     ]
@@ -265,6 +280,7 @@ def _compose_final_turn_trace_messages(
     trace_messages: list[ConversationTraceMessage],
     answer_text: str,
 ) -> list[ConversationTraceMessage]:
+    """Finalize trace messages with one clean assistant response."""
     finalized: list[ConversationTraceMessage] = []
     for trace_message in trace_messages:
         if trace_message.role == "assistant" and not trace_message.tool_calls:
@@ -287,6 +303,7 @@ def _compose_final_turn_trace_messages(
 
 
 def _iter_message_objects(value: Any) -> list[BaseMessage]:
+    """Recursively collect LangChain message objects from stream payloads."""
     messages: list[BaseMessage] = []
     if isinstance(value, BaseMessage):
         messages.append(value)
@@ -312,16 +329,19 @@ class AgentAttemptResult:
 
 class FirstAidCopilotService:
     def __init__(self, config: AppConfig | None = None) -> None:
+        """Initialize service dependencies and runtime directories."""
         self.config = config or AppConfig()
         self.config.ensure_runtime_dirs()
         self.logger = ConversationLogger(self.config.conversations_dir)
         self._store_cache: dict[str, TfidfVectorStore] = {}
 
     def _index_built(self, profile: ProfileName) -> bool:
+        """Return whether all required index files exist."""
         index_dir = self.config.index_dir(profile)
         return all((index_dir / name).exists() for name in INDEX_REQUIRED_FILES)
 
     def _load_store(self, profile: ProfileName) -> TfidfVectorStore:
+        """Load or reuse the vector store for a profile."""
         if profile in self._store_cache:
             return self._store_cache[profile]
         if not self._index_built(profile):
@@ -333,6 +353,7 @@ class FirstAidCopilotService:
         return store
 
     def _ollama_models(self) -> tuple[bool, set[str]]:
+        """Fetch locally available Ollama model names."""
         url = self.config.ollama_base_url.rstrip("/") + "/api/tags"
         try:
             response = httpx.get(url, timeout=5.0)
@@ -349,6 +370,7 @@ class FirstAidCopilotService:
         return True, models
 
     def _resolve_runtime_model_name(self, requested_model: str) -> str:
+        """Resolve aliases such as functiongemma:latest for Ollama calls."""
         self.config.validate_model(requested_model)
         available, exact_models = self._ollama_models()
         if not available:
@@ -363,6 +385,7 @@ class FirstAidCopilotService:
         return requested_model
 
     def model_statuses(self) -> list[ModelStatus]:
+        """Return availability for all configured models."""
         available, models = self._ollama_models()
         normalized_models = {normalize_model_name(name) for name in models}
         return [
@@ -374,6 +397,7 @@ class FirstAidCopilotService:
         ]
 
     def doctor(self) -> DoctorReport:
+        """Return a diagnostic report for CLI doctor output."""
         return DoctorReport(
             python_executable=str(Path(__import__("sys").executable)),
             venv_exists=(self.config.root_dir / ".venv").exists(),
@@ -386,6 +410,7 @@ class FirstAidCopilotService:
         )
 
     def health_status(self) -> HealthResponse:
+        """Return API health and availability status."""
         ollama_available, _models = self._ollama_models()
         return HealthResponse(
             status="ok",
@@ -399,9 +424,11 @@ class FirstAidCopilotService:
         )
 
     def list_conversations(self) -> list[ConversationSummary]:
+        """Return persisted conversation summaries."""
         return self.logger.list_conversations()
 
     def get_conversation_thread(self, session_id: str) -> ConversationThread:
+        """Return a persisted conversation thread."""
         return self.logger.load_conversation(session_id)
 
     def _run_tfidf_selection(
@@ -412,6 +439,7 @@ class FirstAidCopilotService:
         test_frame,
         train_documents: list[Any],
     ) -> TfidfSelectionResult:
+        """Run TF-IDF selection using train, dev, and test frames."""
         return select_tfidf_with_dev_test(
             train_texts=[document.page_content for document in train_documents],
             train_answers=[str(answer) for answer in train_frame["answer"].tolist()],
@@ -431,6 +459,7 @@ class FirstAidCopilotService:
         )
 
     def _save_tfidf_selection(self, selection_result: TfidfSelectionResult) -> Path:
+        """Persist the TF-IDF selection result as JSON."""
         self.config.evaluations_dir.mkdir(parents=True, exist_ok=True)
         path = self.config.evaluations_dir / TFIDF_EVALUATION_FILENAME
         with path.open("w", encoding="utf-8") as handle:
@@ -438,6 +467,7 @@ class FirstAidCopilotService:
         return path
 
     def evaluate_tfidf(self) -> tuple[TfidfSelectionResult, Path]:
+        """Evaluate and save the selected TF-IDF configuration."""
         train_frame = load_split_dataframe(self.config, "train")
         dev_frame = load_split_dataframe(self.config, "dev")
         test_frame = load_split_dataframe(self.config, "test")
@@ -451,6 +481,7 @@ class FirstAidCopilotService:
         return selection_result, self._save_tfidf_selection(selection_result)
 
     def build_index(self, profile: str, *, force: bool = False) -> Path:
+        """Build and persist a retrieval index for a profile."""
         validated_profile = self.config.validate_profile(profile)
         index_dir = self.config.index_dir(validated_profile)
         if self._index_built(validated_profile) and not force:
@@ -500,6 +531,7 @@ class FirstAidCopilotService:
         return index_dir
 
     def retrieve(self, query: str, profile: str, *, k: int) -> list[RetrievalHit]:
+        """Retrieve top-k first-aid documents for a query."""
         validated_profile = self.config.validate_profile(profile)
         store = self._load_store(validated_profile)
         hits = store.similarity_search_with_scores(query, k=k)
@@ -517,6 +549,7 @@ class FirstAidCopilotService:
         ]
 
     def _build_model(self, model_name: str) -> ChatOllama:
+        """Create the ChatOllama wrapper for a configured model."""
         runtime_model_name = self._resolve_runtime_model_name(model_name)
         return ChatOllama(
             model=runtime_model_name,
@@ -528,12 +561,15 @@ class FirstAidCopilotService:
         )
 
     def _stream_event(self, event_type: str, **data: Any) -> StreamEvent:
+        """Create a typed stream event."""
         return StreamEvent(type=event_type, data=data)
 
     def _coerce_retrieval_hits(self, raw_hits: list[dict[str, Any]]) -> list[RetrievalHit]:
+        """Convert raw retrieval payloads into RetrievalHit models."""
         return [RetrievalHit(**payload) for payload in raw_hits]
 
     def _history_messages(self, session_id: str) -> list[BaseMessage]:
+        """Load bounded conversation history for an agent call."""
         return self.logger.load_context_messages(
             session_id,
             max_human_messages=MAX_HISTORY_HUMAN_MESSAGES,
@@ -548,11 +584,13 @@ class FirstAidCopilotService:
         call_emergency_now: bool,
         stricter: bool,
     ) -> tuple[Any, dict[str, Any]]:
+        """Create a LangChain agent and capture state for retrieval hits."""
         tool_state: dict[str, Any] = {"hits": []}
 
         @tool("search_first_aid_knowledge")
         def search_first_aid_knowledge(query: str, k: int = top_k) -> str:
             """Search the medical knowledge base based on the search query."""
+            # Bound model-provided k so tool calls stay within the app's debug limit.
             safe_k = max(1, min(k, self.config.default_debug_top_k))
             retrieval_hits = [
                 hit.model_dump()
@@ -583,6 +621,7 @@ class FirstAidCopilotService:
         stricter: bool,
         history_messages: list[BaseMessage],
     ) -> AgentAttemptResult:
+        """Run one synchronous agent attempt."""
         agent, tool_state = self._create_agent_runner(
             model_name=model_name,
             profile=profile,
@@ -627,6 +666,7 @@ class FirstAidCopilotService:
         history_messages: list[BaseMessage],
         attempt_state: dict[str, Any],
     ) -> AsyncIterator[StreamEvent]:
+        """Stream one agent attempt while collecting answer and retrieval state."""
         attempt_state.clear()
         attempt_state.update(
             {
@@ -740,6 +780,7 @@ class FirstAidCopilotService:
         retrieval_hits: list[RetrievalHit],
         call_emergency_now: bool,
     ) -> str:
+        """Build a retrieval-backed answer when generation fails."""
         if not retrieval_hits:
             if call_emergency_now:
                 return (
@@ -770,6 +811,7 @@ class FirstAidCopilotService:
         warnings: list[str],
         used_retrieval_tool: bool,
     ) -> QueryResponse:
+        """Create the public query response model."""
         clean_answer = _strip_tool_markup(answer_text).strip()
         return QueryResponse(
             session_id=session_id,
@@ -793,6 +835,7 @@ class FirstAidCopilotService:
         *,
         trace_messages: list[ConversationTraceMessage],
     ) -> None:
+        """Persist the completed turn and compact run metadata."""
         log_payload = {
             "session_id": response.session_id,
             "turn_id": response.turn_id,
@@ -822,6 +865,7 @@ class FirstAidCopilotService:
         )
 
     def answer_query(self, request: QueryRequest) -> QueryResponse:
+        """Answer one query with retrieval, generation, retry, and fallback logic."""
         profile = self.config.validate_profile(request.profile)
         self.config.validate_model(request.model)
         safety = assess_query(request.query)
@@ -854,6 +898,7 @@ class FirstAidCopilotService:
         final_attempt = first_attempt
         overall_used_tool = first_attempt.used_tool
 
+        # Retry only for failed/empty/unsafe answers, not just because no tool was used.
         needs_retry = (first_attempt_error is not None) or (not first_attempt.answer_text.strip()) or (
             safety.call_emergency_now
             and not has_required_emergency_language(first_attempt.answer_text)
@@ -933,6 +978,7 @@ class FirstAidCopilotService:
         return response
 
     async def astream_query(self, request: QueryRequest) -> AsyncIterator[StreamEvent]:
+        """Stream a query response through status, token, warning, and final events."""
         profile = self.config.validate_profile(request.profile)
         self.config.validate_model(request.model)
         safety = assess_query(request.query)
@@ -992,6 +1038,7 @@ class FirstAidCopilotService:
         final_attempt = first_attempt
         overall_used_tool = first_attempt.used_tool
 
+        # Streaming follows the same retry rules as the non-streaming path.
         needs_retry = (first_attempt_error is not None) or (not first_attempt.answer_text.strip()) or (
             safety.call_emergency_now
             and not has_required_emergency_language(first_attempt.answer_text)

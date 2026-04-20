@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# Conversation tests cover JSONL persistence and prompt-history reconstruction.
+
 from firstaid_copilot.conversation import ConversationLogger
 
 

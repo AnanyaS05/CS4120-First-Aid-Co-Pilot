@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# File-backed TF-IDF vector store used by both experiment and demo profiles.
+
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,6 +24,7 @@ class TfidfIndexMetadata:
     tuning: dict | None = None
 
     def to_json(self) -> dict:
+        """Serialize index metadata to JSON-compatible values."""
         return {
             "profile": self.profile,
             "source_split": self.source_split,
@@ -31,6 +34,7 @@ class TfidfIndexMetadata:
 
     @classmethod
     def from_json(cls, payload: dict) -> "TfidfIndexMetadata":
+        """Deserialize index metadata from persisted JSON."""
         params = payload["hyperparameters"]
         return cls(
             profile=payload["profile"],
@@ -56,6 +60,7 @@ class TfidfVectorStore:
         doc_matrix,
         metadata: TfidfIndexMetadata,
     ) -> None:
+        """Store documents, vectorizer, sparse matrix, and metadata in memory."""
         self.documents = documents
         self.vectorizer = vectorizer
         self.doc_matrix = doc_matrix
@@ -67,11 +72,13 @@ class TfidfVectorStore:
         documents: list[Document],
         metadata: TfidfIndexMetadata,
     ) -> "TfidfVectorStore":
+        """Fit a TF-IDF vectorizer and build an in-memory vector store."""
         vectorizer = TfidfVectorizer(**metadata.hyperparameters.to_vectorizer_kwargs())
         doc_matrix = vectorizer.fit_transform([document.page_content for document in documents])
         return cls(documents=documents, vectorizer=vectorizer, doc_matrix=doc_matrix, metadata=metadata)
 
     def save(self, directory: Path) -> None:
+        """Persist the vectorizer, matrix, documents, and config to disk."""
         directory.mkdir(parents=True, exist_ok=True)
         joblib.dump(self.vectorizer, directory / "vectorizer.joblib")
         sparse.save_npz(directory / "doc_matrix.npz", self.doc_matrix)
@@ -81,6 +88,7 @@ class TfidfVectorStore:
 
     @classmethod
     def load(cls, directory: Path) -> "TfidfVectorStore":
+        """Load a persisted TF-IDF vector store from disk."""
         vectorizer = joblib.load(directory / "vectorizer.joblib")
         doc_matrix = sparse.load_npz(directory / "doc_matrix.npz")
         documents = load_serialized_documents(directory / "documents.jsonl")
@@ -94,6 +102,7 @@ class TfidfVectorStore:
         *,
         k: int = 3,
     ) -> list[tuple[Document, float]]:
+        """Return the top-k documents with cosine similarity scores."""
         if not query.strip():
             return []
         query_vector = self.vectorizer.transform([query])
@@ -102,5 +111,6 @@ class TfidfVectorStore:
         return [(self.documents[int(index)], float(scores[int(index)])) for index in top_indices]
 
     def similarity_search(self, query: str, *, k: int = 3) -> list[Document]:
+        """Return only the top-k matching documents."""
         return [document for document, _score in self.similarity_search_with_scores(query, k=k)]
 

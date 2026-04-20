@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# Safety tests cover emergency category detection and escalation wording checks.
+
 from firstaid_copilot.safety import assess_query, has_required_emergency_language
 
 

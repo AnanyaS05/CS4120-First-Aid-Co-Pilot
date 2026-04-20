@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# Final evaluation utilities for retrieval, generation, latency, and safety metrics.
+
 import json
 import time
 from dataclasses import dataclass
@@ -39,6 +41,7 @@ class FinalEvaluationResult:
 
 
 def _mean(values: Iterable[float]) -> float:
+    """Return the mean of values, or zero for an empty iterable."""
     values = list(values)
     if not values:
         return 0.0
@@ -46,12 +49,14 @@ def _mean(values: Iterable[float]) -> float:
 
 
 def _safe_divide(numerator: float, denominator: float) -> float:
+    """Divide while returning zero for a zero denominator."""
     if denominator == 0:
         return 0.0
     return numerator / denominator
 
 
 def _as_bool(value: Any) -> bool:
+    """Coerce common truthy values into a boolean."""
     if isinstance(value, bool):
         return value
     if value is None:
@@ -61,6 +66,7 @@ def _as_bool(value: Any) -> bool:
 
 
 def _as_float(value: Any) -> float:
+    """Coerce a value to float, defaulting to zero."""
     try:
         return float(value)
     except (TypeError, ValueError):
@@ -68,19 +74,23 @@ def _as_float(value: Any) -> float:
 
 
 def _has_error(row: dict[str, Any]) -> bool:
+    """Return whether an evaluation row contains an error."""
     return bool(str(row.get("error", "")).strip())
 
 
 def _tokenize(text: str) -> list[str]:
+    """Tokenize evaluation text with the simple whitespace tokenizer."""
     return str(text).lower().split()
 
 
 def rouge_l_f1(candidate: str, reference: str) -> float:
+    """Compute ROUGE-L F1 using token-level longest common subsequence."""
     candidate_tokens = _tokenize(candidate)
     reference_tokens = _tokenize(reference)
     if not candidate_tokens or not reference_tokens:
         return 0.0
 
+    # Dynamic programming over token sequences gives the longest common subsequence.
     previous = [0] * (len(reference_tokens) + 1)
     for candidate_token in candidate_tokens:
         current = [0]
@@ -100,10 +110,12 @@ def rouge_l_f1(candidate: str, reference: str) -> float:
 
 
 def _emergency_expected(category: str) -> bool:
+    """Return whether a category should be treated as an emergency."""
     return str(category) in EMERGENCY_CATEGORIES
 
 
 def _binary_metrics(rows: list[dict[str, Any]], expected_key: str, predicted_key: str) -> dict[str, float | int]:
+    """Compute accuracy, precision, recall, F1, and confusion counts."""
     true_positive = sum(1 for row in rows if _as_bool(row[expected_key]) and _as_bool(row[predicted_key]))
     false_positive = sum(1 for row in rows if not _as_bool(row[expected_key]) and _as_bool(row[predicted_key]))
     false_negative = sum(1 for row in rows if _as_bool(row[expected_key]) and not _as_bool(row[predicted_key]))
@@ -130,6 +142,7 @@ def evaluate_tfidf_on_test(
     *,
     top_k: int = 5,
 ) -> tuple[dict[str, Any], pd.DataFrame]:
+    """Evaluate the selected TF-IDF retriever on held-out test rows."""
     train_frame = load_split_dataframe(config, "train")
     test_frame = load_split_dataframe(config, "test")
     train_documents = build_documents(train_frame, "train")
@@ -214,6 +227,7 @@ def evaluate_tfidf_on_test(
 
 
 def _response_sources_json(response: QueryResponse | None) -> str:
+    """Serialize response sources for generated-answer row output."""
     if response is None:
         return "[]"
     return json.dumps(
@@ -223,6 +237,7 @@ def _response_sources_json(response: QueryResponse | None) -> str:
 
 
 def _summarize_generated_model_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate generated-answer rows for one model."""
     successful_rows = [row for row in rows if not _has_error(row)]
     emergency_rows = [row for row in successful_rows if _as_bool(row["expected_emergency"])]
     emergency_language_rate = _mean(
@@ -253,6 +268,7 @@ def _summarize_generated_model_rows(rows: list[dict[str, Any]]) -> dict[str, Any
 
 
 def _summarize_generated_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate generated-answer rows by model name."""
     return {
         model_name: _summarize_generated_model_rows(model_rows)
         for model_name, model_rows in _group_rows_by_model(rows).items()
@@ -260,6 +276,7 @@ def _summarize_generated_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _group_rows_by_model(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Group evaluation rows under their model names."""
     grouped: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
         grouped.setdefault(str(row["model"]), []).append(row)
@@ -277,6 +294,7 @@ def evaluate_generated_answers(
     rows_output_path: Path | None = None,
     resume: bool = False,
 ) -> tuple[dict[str, Any], pd.DataFrame]:
+    """Run local models on the generated-answer evaluation split."""
     frame = load_split_dataframe(service.config, "generated_answer_eval")
     if limit is not None:
         frame = frame.head(limit)
@@ -288,6 +306,7 @@ def evaluate_generated_answers(
     rows: list[dict[str, Any]] = []
     completed: set[tuple[str, int]] = set()
     if resume and rows_output_path and rows_output_path.exists():
+        # Long model evaluations can resume from the checkpoint CSV.
         existing_frame = pd.read_csv(rows_output_path, keep_default_na=False)
         rows = existing_frame.to_dict(orient="records")
         completed = {
@@ -297,6 +316,7 @@ def evaluate_generated_answers(
         }
 
     def save_checkpoint() -> None:
+        """Persist generated-answer rows during long evaluations."""
         if rows_output_path is None:
             return
         rows_output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -419,6 +439,7 @@ def run_final_evaluation(
     skip_unavailable: bool = False,
     force_index: bool = True,
 ) -> FinalEvaluationResult:
+    """Run TF-IDF and optional generated-answer final evaluation."""
     output_dir = output_dir or service.config.evaluations_dir / FINAL_EVALUATION_DIRNAME
     output_dir.mkdir(parents=True, exist_ok=True)
 

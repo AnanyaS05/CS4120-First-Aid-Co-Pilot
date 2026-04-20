@@ -1,3 +1,5 @@
+/* Visual styling for the First-Aid Co-Pilot chat shell. */
+
 :root {
   --bg: #f4efe6;
   --panel: rgba(255, 252, 247, 0.88);
@@ -225,6 +227,8 @@ h2 {
 
 .messages {
   display: grid;
+  align-content: start;
+  grid-auto-rows: max-content;
   gap: 16px;
   height: 100%;
   padding: 24px;
@@ -254,6 +258,7 @@ h2 {
 
 .message {
   display: grid;
+  align-self: start;
   gap: 8px;
   animation: fade-up 240ms ease both;
 }

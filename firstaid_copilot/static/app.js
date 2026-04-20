@@ -1,3 +1,5 @@
+// Browser chat client for streaming Co-Pilot responses over server-sent events.
+
 const state = {
   conversations: [],
   currentSessionId: null,
@@ -27,6 +29,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 
+// Cache DOM elements used across render and event handlers.
 function cacheDom() {
   dom.chatTitle = document.getElementById("chat-title");
   dom.conversationList = document.getElementById("conversation-list");
@@ -42,6 +45,7 @@ function cacheDom() {
   dom.statusPill = document.getElementById("status-pill");
 }
 
+// Attach UI event listeners for chat, navigation, and typing.
 function bindEvents() {
   dom.newChatButton.addEventListener("click", startNewChat);
   dom.sendButton.addEventListener("click", () => {
@@ -67,6 +71,7 @@ function bindEvents() {
   });
 }
 
+// Load startup data and open the newest conversation if available.
 async function initializeApp() {
   await Promise.all([loadModels(), refreshConversationList()]);
   if (state.conversations.length > 0) {
@@ -77,6 +82,7 @@ async function initializeApp() {
   }
 }
 
+// Populate the model selector from the API.
 async function loadModels() {
   const response = await fetch("/models");
   if (!response.ok) {
@@ -92,6 +98,7 @@ async function loadModels() {
   populateModels(await response.json());
 }
 
+// Render model options and select the first available model.
 function populateModels(models) {
   dom.modelSelect.replaceChildren();
   models.forEach((model) => {
@@ -108,6 +115,7 @@ function populateModels(models) {
   }
 }
 
+// Fetch saved conversation summaries from the API.
 async function refreshConversationList() {
   const response = await fetch("/conversations");
   if (!response.ok) {
@@ -117,6 +125,7 @@ async function refreshConversationList() {
   renderConversationList();
 }
 
+// Load a saved conversation into the chat panel.
 async function openConversation(sessionId) {
   const response = await fetch(`/conversations/${encodeURIComponent(sessionId)}`);
   if (!response.ok) {
@@ -144,6 +153,7 @@ async function openConversation(sessionId) {
   scrollMessagesToBottom(false);
 }
 
+// Reset local state for a new unsaved conversation.
 function startNewChat() {
   state.currentSessionId = null;
   state.currentTitle = "New Chat";
@@ -156,6 +166,7 @@ function startNewChat() {
   dom.messageInput.focus();
 }
 
+// Send the current input and create a pending assistant message.
 async function sendCurrentMessage() {
   const text = dom.messageInput.value.trim();
   if (!text || state.sending) {
@@ -214,7 +225,9 @@ async function sendCurrentMessage() {
   }
 }
 
+// Stream a query request and dispatch parsed SSE events.
 async function streamChat(payload) {
+  // Read streamed SSE chunks manually so tokens can appear as they arrive.
   const response = await fetch("/query/stream", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -250,6 +263,7 @@ async function streamChat(payload) {
   }
 }
 
+// Parse one raw server-sent event block.
 function parseSseEvent(rawEvent) {
   if (!rawEvent.trim()) {
     return null;
@@ -277,7 +291,9 @@ function parseSseEvent(rawEvent) {
   };
 }
 
+// Apply one stream event to chat state and UI.
 function handleStreamEvent(type, data) {
+  // Server events update the same pending assistant message until final arrives.
   if (type === "session") {
     state.currentSessionId = data.session_id;
     state.currentTitle = truncateText(state.lastSubmittedQuery || "New Chat", 56);
@@ -347,6 +363,7 @@ function handleStreamEvent(type, data) {
   }
 }
 
+// Add a new message to state and the DOM.
 function appendMessage(message) {
   const normalized = normalizeMessage(message);
   state.messages.push(normalized);
@@ -356,6 +373,7 @@ function appendMessage(message) {
   scrollMessagesToBottom(true);
 }
 
+// Patch the currently streaming assistant message.
 function updateAssistantMessage(patch) {
   const message = getPendingAssistantMessage();
   if (!message) {
@@ -372,10 +390,12 @@ function updateAssistantMessage(patch) {
   scrollMessagesToBottom(true);
 }
 
+// Return the assistant message currently receiving stream updates.
 function getPendingAssistantMessage() {
   return state.messages.find((message) => message.id === state.pendingAssistantId);
 }
 
+// Normalize API and client-created messages to one UI shape.
 function normalizeMessage(message) {
   return {
     id: message.id,
@@ -388,6 +408,7 @@ function normalizeMessage(message) {
   };
 }
 
+// Render saved conversations in the sidebar.
 function renderConversationList() {
   dom.conversationList.replaceChildren();
 
@@ -414,6 +435,7 @@ function renderConversationList() {
   });
 }
 
+// Render the full current message list.
 function renderMessages() {
   dom.messages.replaceChildren();
   state.messages.forEach((message) => {
@@ -423,6 +445,7 @@ function renderMessages() {
   toggleEmptyState();
 }
 
+// Clone and hydrate the message template for one message.
 function createMessageElement(message) {
   const fragment = dom.messageTemplate.content.cloneNode(true);
   const article = fragment.querySelector(".message");
@@ -431,6 +454,7 @@ function createMessageElement(message) {
   return article;
 }
 
+// Update one message element with text, sources, and warnings.
 function hydrateMessageElement(element, message) {
   element.className = `message ${message.role}${message.streaming ? " is-streaming" : ""}`;
   element.querySelector(".message__meta").textContent =
@@ -476,15 +500,18 @@ function hydrateMessageElement(element, message) {
   }
 }
 
+// Show or hide the empty-state panel.
 function toggleEmptyState() {
   const hasMessages = state.messages.length > 0;
   dom.emptyState.classList.toggle("is-hidden", hasMessages);
 }
 
+// Render the active chat title.
 function renderTitle() {
   dom.chatTitle.textContent = state.currentTitle || "New Chat";
 }
 
+// Update the streaming status pill.
 function setStatus(text) {
   if (!text) {
     dom.statusPill.hidden = true;
@@ -495,11 +522,13 @@ function setStatus(text) {
   dom.statusPill.textContent = text;
 }
 
+// Resize the composer textarea to match its content.
 function autoResizeTextarea() {
   dom.messageInput.style.height = "0px";
   dom.messageInput.style.height = `${Math.min(dom.messageInput.scrollHeight, 180)}px`;
 }
 
+// Scroll the chat panel to the newest message.
 function scrollMessagesToBottom(smooth) {
   dom.messages.scrollTo({
     top: dom.messages.scrollHeight,
@@ -507,6 +536,7 @@ function scrollMessagesToBottom(smooth) {
   });
 }
 
+// Insert or update one sidebar conversation summary.
 function upsertConversationSummary(summary) {
   const existingIndex = state.conversations.findIndex(
     (item) => item.session_id === summary.session_id,
@@ -521,6 +551,7 @@ function upsertConversationSummary(summary) {
   });
 }
 
+// Collapse and shorten text for titles and previews.
 function truncateText(text, limit) {
   const compact = String(text || "").replace(/\s+/g, " ").trim();
   if (compact.length <= limit) {
@@ -529,6 +560,7 @@ function truncateText(text, limit) {
   return `${compact.slice(0, limit - 1).trimEnd()}…`;
 }
 
+// Format timestamps for compact chat metadata.
 function formatTimestamp(timestamp) {
   if (!timestamp) {
     return "Unknown time";
@@ -545,6 +577,7 @@ function formatTimestamp(timestamp) {
   });
 }
 
+// Escape message ids before using them in CSS selectors.
 function cssEscape(value) {
   if (window.CSS && typeof window.CSS.escape === "function") {
     return window.CSS.escape(value);
@@ -552,6 +585,7 @@ function cssEscape(value) {
   return String(value).replace(/"/g, '\\"');
 }
 
+// Create a temporary client-side message id.
 function makeClientId(prefix) {
   if (window.crypto && typeof window.crypto.randomUUID === "function") {
     return `${prefix}-${window.crypto.randomUUID()}`;
@@ -559,6 +593,7 @@ function makeClientId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+// Find a select option by value.
 function findOption(selectElement, value) {
   return Array.from(selectElement.options).find((option) => option.value === value);
 }

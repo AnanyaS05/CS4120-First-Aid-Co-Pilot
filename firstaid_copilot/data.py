@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# Data loading and document formatting for the preprocessed FirstAidQA splits.
+
 import json
 from pathlib import Path
 from typing import Iterable
@@ -16,7 +18,6 @@ SPLIT_FILES = {
     "full_clean": "full_clean.csv",
     "eval_subset": "eval_subset.csv",
     "generated_answer_eval": "generated_answer_eval.csv",
-    "robustness_test": "robustness_test.csv",
 }
 
 REQUIRED_QA_COLUMNS = {
@@ -29,6 +30,7 @@ REQUIRED_QA_COLUMNS = {
 
 
 def load_split_dataframe(config: AppConfig, split_name: str) -> pd.DataFrame:
+    """Load and validate one preprocessed CSV split."""
     try:
         filename = SPLIT_FILES[split_name]
     except KeyError as exc:
@@ -39,14 +41,15 @@ def load_split_dataframe(config: AppConfig, split_name: str) -> pd.DataFrame:
         raise FileNotFoundError(f"Missing preprocessing split at {path}.")
 
     frame = pd.read_csv(path)
-    if split_name not in {"robustness_test"}:
-        missing = REQUIRED_QA_COLUMNS.difference(frame.columns)
-        if missing:
-            raise ValueError(f"Split '{split_name}' is missing columns: {sorted(missing)}.")
+    missing = REQUIRED_QA_COLUMNS.difference(frame.columns)
+    if missing:
+        raise ValueError(f"Split '{split_name}' is missing columns: {sorted(missing)}.")
     return frame
 
 
 def format_document_text(question: str, answer: str, category: str, source: str) -> str:
+    """Build the searchable text body for a QA document."""
+    # Repeat the question to give query wording extra weight in sparse retrieval.
     return (
         f"Question: {question}\n"
         f"Question: {question}\n"
@@ -57,6 +60,7 @@ def format_document_text(question: str, answer: str, category: str, source: str)
 
 
 def build_documents(frame: pd.DataFrame, split: str) -> list[Document]:
+    """Convert a QA dataframe into LangChain documents with metadata."""
     documents: list[Document] = []
     for row_index, row in frame.reset_index(drop=True).iterrows():
         question = str(row["question"]).strip()
@@ -82,10 +86,12 @@ def build_documents(frame: pd.DataFrame, split: str) -> list[Document]:
 
 
 def get_profile_source_split(profile: ProfileName) -> str:
+    """Map an index profile to its backing CSV split."""
     return "train" if profile == "experiment" else "full_clean"
 
 
 def serialize_documents(documents: Iterable[Document], path: Path) -> None:
+    """Write documents to JSONL for index persistence."""
     with path.open("w", encoding="utf-8") as handle:
         for document in documents:
             handle.write(
@@ -101,6 +107,7 @@ def serialize_documents(documents: Iterable[Document], path: Path) -> None:
 
 
 def load_serialized_documents(path: Path) -> list[Document]:
+    """Read persisted JSONL documents back into LangChain objects."""
     documents: list[Document] = []
     with path.open("r", encoding="utf-8") as handle:
         for line in handle:

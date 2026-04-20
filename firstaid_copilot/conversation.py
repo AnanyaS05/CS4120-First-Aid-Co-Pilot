@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# JSONL conversation persistence and LangChain message reconstruction helpers.
+
 import json
 import re
 from dataclasses import dataclass
@@ -20,24 +22,29 @@ from .schemas import (
 
 
 def utc_now_iso() -> str:
+    """Return the current UTC timestamp in ISO format."""
     return datetime.now(UTC).isoformat()
 
 
 def make_session_id() -> str:
+    """Create a unique conversation session id."""
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
     return f"session-{timestamp}-{uuid4().hex[:8]}"
 
 
 def make_turn_id() -> str:
+    """Create a unique conversation turn id."""
     return f"turn-{uuid4().hex[:10]}"
 
 
 def sanitize_identifier(value: str) -> str:
+    """Convert arbitrary text into a safe file identifier."""
     cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip("-")
     return cleaned or f"session-{uuid4().hex[:8]}"
 
 
 def _truncate_text(text: str, *, limit: int) -> str:
+    """Collapse whitespace and truncate text for UI previews."""
     compact = " ".join(text.split())
     if len(compact) <= limit:
         return compact
@@ -45,6 +52,7 @@ def _truncate_text(text: str, *, limit: int) -> str:
 
 
 def _content_to_text(content: Any) -> str:
+    """Convert LangChain message content into plain text."""
     if isinstance(content, str):
         return content.strip()
     if isinstance(content, list):
@@ -66,6 +74,7 @@ def _content_to_text(content: Any) -> str:
 
 
 def _strip_tool_markup(text: str) -> str:
+    """Remove accidental tool-call markup from assistant text."""
     cleaned = re.sub(
         r"<search_first_aid_knowledge>.*?</search_first_aid_knowledge>",
         "",
@@ -82,6 +91,7 @@ def _strip_tool_markup(text: str) -> str:
 
 
 def trace_message_from_langchain(message: BaseMessage) -> ConversationTraceMessage | None:
+    """Convert a LangChain message to a persisted trace message."""
     if isinstance(message, HumanMessage):
         content = _content_to_text(message.content)
         if not content:
@@ -116,6 +126,7 @@ def trace_message_from_langchain(message: BaseMessage) -> ConversationTraceMessa
 
 
 def langchain_message_from_trace(message: ConversationTraceMessage) -> BaseMessage:
+    """Rebuild a LangChain message from a persisted trace message."""
     if message.role == "human":
         return HumanMessage(content=message.content, name=message.name)
     if message.role == "assistant":
@@ -136,13 +147,16 @@ class ConversationLogger:
     conversations_dir: Path
 
     def __post_init__(self) -> None:
+        """Ensure the conversation log directory exists."""
         self.conversations_dir.mkdir(parents=True, exist_ok=True)
 
     def _session_path(self, session_id: str) -> Path:
+        """Return the JSONL path for a session id."""
         safe_session_id = sanitize_identifier(session_id)
         return self.conversations_dir / f"{safe_session_id}.jsonl"
 
     def _session_files(self) -> list[Path]:
+        """Return saved session files newest first."""
         if not self.conversations_dir.exists():
             return []
         return sorted(
@@ -156,9 +170,11 @@ class ConversationLogger:
         )
 
     def session_exists(self, session_id: str) -> bool:
+        """Return whether a session log exists."""
         return self._session_path(session_id).exists()
 
     def _load_session_records(self, session_id: str) -> list[ConversationTurnRecord]:
+        """Load and validate all turn records for a session."""
         path = self._session_path(session_id)
         if not path.exists():
             raise FileNotFoundError(f"Conversation '{session_id}' was not found.")
@@ -171,6 +187,7 @@ class ConversationLogger:
         return records
 
     def log_turn(self, session_id: str, payload: dict) -> Path:
+        """Append one conversation turn to a session log."""
         record = ConversationTurnRecord.model_validate(payload)
         path = self._session_path(session_id)
         with path.open("a", encoding="utf-8") as handle:
@@ -179,6 +196,7 @@ class ConversationLogger:
         return path
 
     def log_run(self, payload: dict) -> Path:
+        """Append one compact run record to runs.jsonl."""
         path = self.conversations_dir / "runs.jsonl"
         with path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, ensure_ascii=False))
@@ -186,6 +204,7 @@ class ConversationLogger:
         return path
 
     def list_conversations(self) -> list[ConversationSummary]:
+        """Return sidebar-ready summaries for saved conversations."""
         summaries: list[ConversationSummary] = []
         for path in self._session_files():
             session_id = path.stem
@@ -218,6 +237,7 @@ class ConversationLogger:
         *,
         max_human_messages: int,
     ) -> list[BaseMessage]:
+        """Load recent conversation context as LangChain messages."""
         if not self.session_exists(session_id):
             return []
 
@@ -233,6 +253,7 @@ class ConversationLogger:
             if trace_message.role == "human"
         ]
         if len(human_indices) > max_human_messages:
+            # Keep the most recent human-led turns so prompts stay bounded.
             trace_messages = trace_messages[human_indices[-max_human_messages] :]
 
         return [
@@ -241,6 +262,7 @@ class ConversationLogger:
         ]
 
     def load_conversation(self, session_id: str) -> ConversationThread:
+        """Load one full conversation thread for the web UI."""
         records = self._load_session_records(session_id)
         if not records:
             raise FileNotFoundError(f"Conversation '{session_id}' was not found.")

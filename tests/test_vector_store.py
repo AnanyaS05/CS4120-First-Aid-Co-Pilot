@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# Vector-store tests verify persistence and cosine-search behavior together.
+
 from firstaid_copilot.data import build_documents, load_split_dataframe
 from firstaid_copilot.tuning import FALLBACK_HYPERPARAMETERS
 from firstaid_copilot.vector_store import TfidfIndexMetadata, TfidfVectorStore

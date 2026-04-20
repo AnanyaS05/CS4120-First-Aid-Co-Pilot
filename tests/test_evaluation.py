@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# Evaluation tests keep metric aggregation deterministic with fake model outputs.
+
 import pytest
 
 from firstaid_copilot.data import load_split_dataframe
@@ -40,6 +42,7 @@ def test_evaluate_generated_answers_summarizes_model_outputs(temp_config):
     }
 
     class FakeService:
+        # Return the reference answer so metric expectations are exact.
         config = temp_config
 
         def model_statuses(self):

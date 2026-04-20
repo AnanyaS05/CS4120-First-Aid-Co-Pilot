@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# Shared pytest fixtures that build a tiny FirstAidQA-style workspace.
+
 from pathlib import Path
 
 import pandas as pd
@@ -19,6 +21,7 @@ def _qa_frame(rows: list[dict]) -> pd.DataFrame:
 
 @pytest.fixture()
 def temp_config(tmp_path: Path) -> AppConfig:
+    # Tests use synthetic CSVs so they never depend on the real preprocessing files.
     preprocessing_dir = tmp_path / "preprocessing"
     preprocessing_dir.mkdir(parents=True, exist_ok=True)
 
@@ -68,25 +71,13 @@ def temp_config(tmp_path: Path) -> AppConfig:
     dev = _qa_frame(dev_rows)
     test = _qa_frame(test_rows)
     full_clean = _qa_frame(full_clean_rows)
-    eval_subset = dev.copy()
     generated_answer_eval = test.copy()
-    robustness = pd.DataFrame(
-        [
-            {
-                "question": "What should I do if someone collapses?",
-                "answer": "Check breathing and call emergency services.",
-                "source": "FirstAidInstructions",
-            }
-        ]
-    )
 
     train.to_csv(preprocessing_dir / "train.csv", index=False)
     dev.to_csv(preprocessing_dir / "dev.csv", index=False)
     test.to_csv(preprocessing_dir / "test.csv", index=False)
     full_clean.to_csv(preprocessing_dir / "full_clean.csv", index=False)
-    eval_subset.to_csv(preprocessing_dir / "eval_subset.csv", index=False)
     generated_answer_eval.to_csv(preprocessing_dir / "generated_answer_eval.csv", index=False)
-    robustness.to_csv(preprocessing_dir / "robustness_test.csv", index=False)
 
     return AppConfig(root_dir=tmp_path)
 

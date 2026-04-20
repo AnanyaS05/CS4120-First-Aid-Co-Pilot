@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# Service tests isolate agent behavior with fake LangChain agents and streams.
+
 import asyncio
 import json
 
@@ -32,6 +34,7 @@ def test_answer_query_logs_turn_trace_with_tool_messages(monkeypatch, temp_confi
     fake_tools = []
 
     class FakeAgent:
+        # Simulate a full tool-call trace so the logger can persist it.
         def invoke(self, payload):
             tool_output = fake_tools[0].invoke(
                 {"query": "How should I treat severe bleeding?", "k": 3}
@@ -314,6 +317,7 @@ def test_astream_query_retries_when_first_attempt_is_empty(monkeypatch, temp_con
     attempt_number = {"value": 0}
 
     class FakeAgent:
+        # First stream is empty; the second stream proves retry behavior.
         def __init__(self, attempt: int) -> None:
             self.attempt = attempt
 

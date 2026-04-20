@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# TF-IDF hyperparameter search and retrieval scoring for experiment selection.
+
 import itertools
 from dataclasses import asdict, dataclass
 from typing import Iterable
@@ -19,6 +21,7 @@ class TfidfHyperparameters:
     norm: str = "l2"
 
     def to_vectorizer_kwargs(self) -> dict:
+        """Return parameters accepted by scikit-learn's TfidfVectorizer."""
         return {
             "ngram_range": self.ngram_range,
             "min_df": self.min_df,
@@ -89,10 +92,12 @@ class TfidfSelectionResult:
 
 
 def _tokenize(text: str) -> list[str]:
+    """Tokenize text with the simple evaluation tokenizer."""
     return text.lower().split()
 
 
 def unigram_f1(candidate: str, reference: str) -> float:
+    """Compute unigram F1 overlap between candidate and reference text."""
     candidate_tokens = _tokenize(candidate)
     reference_tokens = _tokenize(reference)
     if not candidate_tokens or not reference_tokens:
@@ -114,6 +119,7 @@ def unigram_f1(candidate: str, reference: str) -> float:
 
 
 def iter_search_grid() -> Iterable[TfidfHyperparameters]:
+    """Yield every TF-IDF hyperparameter candidate in the search grid."""
     for ngram_range, min_df, max_df, sublinear_tf, max_features in itertools.product(
         ((1, 1), (1, 2)),
         (1, 2, 3),
@@ -131,6 +137,7 @@ def iter_search_grid() -> Iterable[TfidfHyperparameters]:
 
 
 def score_retrieval_metrics(metrics: dict[str, float]) -> float:
+    """Combine retrieval metrics into one weighted selection score."""
     return sum(
         RETRIEVAL_METRIC_WEIGHTS[name] * metrics[name]
         for name in RETRIEVAL_METRIC_WEIGHTS
@@ -147,6 +154,7 @@ def evaluate_tfidf_params(
     eval_answers: list[str],
     eval_categories: list[str],
 ) -> TfidfEvaluationResult:
+    """Evaluate one TF-IDF configuration against a query split."""
     if not train_texts:
         raise ValueError("Cannot evaluate TF-IDF without training documents.")
     if not eval_queries:
@@ -199,6 +207,7 @@ def rank_tfidf_on_dev(
     dev_answers: list[str],
     dev_categories: list[str],
 ) -> tuple[list[TfidfEvaluationResult], int]:
+    """Evaluate all TF-IDF configs on dev and return them ranked."""
     candidate_count = 0
     ranked_results: list[TfidfEvaluationResult] = []
 
@@ -232,6 +241,7 @@ def tune_tfidf(
     dev_answers: list[str],
     dev_categories: list[str],
 ) -> TuningResult:
+    """Select the best TF-IDF parameters using development data only."""
     ranked_results, candidate_count = rank_tfidf_on_dev(
         train_texts=train_texts,
         train_answers=train_answers,
@@ -273,6 +283,8 @@ def select_tfidf_with_dev_test(
     dev_weight: float = DEFAULT_DEV_SCORE_WEIGHT,
     test_weight: float = DEFAULT_TEST_SCORE_WEIGHT,
 ) -> TfidfSelectionResult:
+    """Select TF-IDF params by dev ranking and weighted dev/test scoring."""
+    # Rank broadly on dev, then re-rank the top few with held-out test metrics.
     if top_n < 1:
         raise ValueError("top_n must be at least 1.")
     if dev_weight < 0 or test_weight < 0:
@@ -331,12 +343,14 @@ def select_tfidf_with_dev_test(
 
 
 def hyperparameters_to_dict(params: TfidfHyperparameters) -> dict:
+    """Convert hyperparameters to JSON-friendly values."""
     payload = asdict(params)
     payload["ngram_range"] = list(params.ngram_range)
     return payload
 
 
 def evaluation_result_to_dict(result: TfidfEvaluationResult) -> dict:
+    """Convert one evaluation result to a serializable dictionary."""
     return {
         "params": hyperparameters_to_dict(result.params),
         "score": result.score,
@@ -345,6 +359,7 @@ def evaluation_result_to_dict(result: TfidfEvaluationResult) -> dict:
 
 
 def final_candidate_to_dict(candidate: TfidfFinalCandidate) -> dict:
+    """Convert one final TF-IDF candidate to a serializable dictionary."""
     return {
         "params": hyperparameters_to_dict(candidate.params),
         "dev_score": candidate.dev_score,
@@ -356,6 +371,7 @@ def final_candidate_to_dict(candidate: TfidfFinalCandidate) -> dict:
 
 
 def selection_result_to_dict(result: TfidfSelectionResult) -> dict:
+    """Convert the full TF-IDF selection result to a dictionary."""
     return {
         "selection_strategy": "top_dev_then_weighted_dev_test",
         "candidate_count": result.candidate_count,

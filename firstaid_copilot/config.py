@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# Central runtime configuration shared by the CLI, API, service, and tests.
+
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -21,6 +23,7 @@ SUPPORTED_PROFILES = ("experiment", "demo")
 
 
 def normalize_model_name(model_name: str) -> str:
+    """Normalize Ollama model names for alias-insensitive comparisons."""
     model_name = model_name.strip().casefold()
     if model_name.endswith(":latest"):
         return model_name[: -len(":latest")]
@@ -44,37 +47,46 @@ class AppConfig:
     model_names: tuple[str, ...] = SUPPORTED_MODELS
 
     def __post_init__(self) -> None:
+        """Resolve the project root after dataclass initialization."""
         self.root_dir = self.root_dir.resolve()
 
     @property
     def preprocessing_dir(self) -> Path:
+        """Return the directory containing preprocessing CSV artifacts."""
         return self.root_dir / "preprocessing"
 
     @property
     def artifacts_dir(self) -> Path:
+        """Return the root directory for generated runtime artifacts."""
         return self.root_dir / "artifacts"
 
     @property
     def indexes_dir(self) -> Path:
+        """Return the directory containing persisted retrieval indexes."""
         return self.artifacts_dir / "indexes"
 
     @property
     def evaluations_dir(self) -> Path:
+        """Return the directory containing evaluation outputs."""
         return self.artifacts_dir / "evaluations"
 
     @property
     def conversations_dir(self) -> Path:
+        """Return the directory containing JSONL conversation logs."""
         return self.artifacts_dir / "conversations"
 
     def index_dir(self, profile: ProfileName) -> Path:
+        """Return the index directory for a retrieval profile."""
         return self.indexes_dir / profile
 
     def ensure_runtime_dirs(self) -> None:
+        """Create runtime artifact directories if they are missing."""
         self.indexes_dir.mkdir(parents=True, exist_ok=True)
         self.evaluations_dir.mkdir(parents=True, exist_ok=True)
         self.conversations_dir.mkdir(parents=True, exist_ok=True)
 
     def validate_profile(self, profile: str) -> ProfileName:
+        """Validate and return a supported retrieval profile name."""
         if profile not in SUPPORTED_PROFILES:
             raise ValueError(
                 f"Unsupported profile '{profile}'. Expected one of {SUPPORTED_PROFILES}."
@@ -82,6 +94,7 @@ class AppConfig:
         return profile  # type: ignore[return-value]
 
     def validate_model(self, model_name: str) -> str:
+        """Validate and return a supported local model name."""
         normalized = normalize_model_name(model_name)
         supported = {normalize_model_name(name) for name in self.model_names}
         if normalized not in supported:

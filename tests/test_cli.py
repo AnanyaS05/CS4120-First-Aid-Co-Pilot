@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# CLI tests focus on rendering streamed events into readable terminal output.
+
 import argparse
 import asyncio
 

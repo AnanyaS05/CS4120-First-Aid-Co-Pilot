@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+# Deterministic safety checks for emergency categories and escalation language.
+
 from dataclasses import dataclass
 
 
+# Keyword matching is intentionally simple and auditable for this safety layer.
 CATEGORY_KEYWORDS = {
     "choking": ["chok", "airway obstruct", "heimlich", "back blow"],
     "cpr": ["cpr", "cardiac arrest", "chest compression", "resuscitat", "aed", "defibrillator"],
@@ -69,6 +72,7 @@ class SafetyAssessment:
 
 
 def detect_risk_category(text: str) -> str:
+    """Return the first keyword-matched risk category for a query."""
     text_lower = text.lower()
     for category, keywords in CATEGORY_KEYWORDS.items():
         if any(keyword in text_lower for keyword in keywords):
@@ -77,6 +81,7 @@ def detect_risk_category(text: str) -> str:
 
 
 def _has_emergency_signal(text_lower: str, category: str) -> bool:
+    """Detect emergency clues that are not category membership alone."""
     if any(marker in text_lower for marker in BREATHING_DISTRESS_MARKERS):
         return True
     if (
@@ -89,6 +94,7 @@ def _has_emergency_signal(text_lower: str, category: str) -> bool:
 
 
 def assess_query(text: str) -> SafetyAssessment:
+    """Classify query risk and decide whether emergency language is required."""
     category = detect_risk_category(text)
     warnings: list[str] = []
     text_lower = text.lower()
@@ -108,6 +114,7 @@ def assess_query(text: str) -> SafetyAssessment:
 
 
 def has_required_emergency_language(answer_text: str) -> bool:
+    """Check whether an answer includes required emergency escalation wording."""
     normalized = answer_text.lower()
     return any(marker in normalized for marker in EMERGENCY_LANGUAGE_MARKERS)
 

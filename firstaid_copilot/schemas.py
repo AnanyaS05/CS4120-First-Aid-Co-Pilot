@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# Pydantic request, response, streaming, and logging schemas for the app boundary.
+
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field

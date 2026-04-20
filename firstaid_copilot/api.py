@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# FastAPI route definitions and static UI mounting for the Co-Pilot service.
+
 import json
 from pathlib import Path
 
@@ -23,6 +25,7 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 def _serialize_sse_event(event: StreamEvent) -> str:
+    """Format one StreamEvent as a server-sent event frame."""
     return (
         f"event: {event.type}\n"
         f"data: {json.dumps(event.data, ensure_ascii=False)}\n\n"
@@ -30,23 +33,28 @@ def _serialize_sse_event(event: StreamEvent) -> str:
 
 
 def create_app(service: FirstAidCopilotService | None = None) -> FastAPI:
+    """Create the FastAPI app and attach a service instance."""
     app = FastAPI(title="First-Aid Co-Pilot", version="0.1.0")
     app.state.service = service or FirstAidCopilotService()
 
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
+        """Return health, model, and index availability."""
         return app.state.service.health_status()
 
     @app.get("/models")
     def models():
+        """Return configured local model availability."""
         return app.state.service.model_statuses()
 
     @app.get("/conversations", response_model=list[ConversationSummary])
     def conversations() -> list[ConversationSummary]:
+        """Return saved conversation summaries."""
         return app.state.service.list_conversations()
 
     @app.get("/conversations/{session_id}", response_model=ConversationThread)
     def conversation_thread(session_id: str) -> ConversationThread:
+        """Return one saved conversation thread."""
         try:
             return app.state.service.get_conversation_thread(session_id)
         except FileNotFoundError as exc:
@@ -54,6 +62,7 @@ def create_app(service: FirstAidCopilotService | None = None) -> FastAPI:
 
     @app.post("/retrieve", response_model=RetrieveResponse)
     def retrieve(request: RetrieveRequest) -> RetrieveResponse:
+        """Run retrieval without invoking the language model."""
         try:
             hits = app.state.service.retrieve(request.query, request.profile, k=request.k)
         except FileNotFoundError as exc:
@@ -62,6 +71,7 @@ def create_app(service: FirstAidCopilotService | None = None) -> FastAPI:
 
     @app.post("/query", response_model=QueryResponse)
     def query(request: QueryRequest) -> QueryResponse:
+        """Answer a query through retrieval, generation, and safety checks."""
         try:
             return app.state.service.answer_query(request)
         except FileNotFoundError as exc:
@@ -73,7 +83,9 @@ def create_app(service: FirstAidCopilotService | None = None) -> FastAPI:
 
     @app.post("/query/stream")
     async def query_stream(request: QueryRequest) -> StreamingResponse:
+        """Stream query progress, tokens, warnings, and final response."""
         async def event_source():
+            """Yield serialized SSE frames from the service stream."""
             try:
                 async for event in app.state.service.astream_query(request):
                     yield _serialize_sse_event(event)

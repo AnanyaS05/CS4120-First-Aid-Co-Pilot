@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# Command-line entry points for index building, querying, serving, and evaluation.
+
 import argparse
 import asyncio
 import json
@@ -19,6 +21,7 @@ console = Console()
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    """Create the command-line parser and subcommands."""
     parser = argparse.ArgumentParser(prog="firstaid-copilot")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -54,6 +57,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _render_doctor(service: FirstAidCopilotService) -> None:
+    """Print environment, model, and index status."""
     report = service.doctor()
     console.print(f"Python executable: {report.python_executable}")
     console.print(f".venv exists: {report.venv_exists}")
@@ -70,6 +74,7 @@ def _render_doctor(service: FirstAidCopilotService) -> None:
 
 
 def _render_tfidf_evaluation(service: FirstAidCopilotService) -> None:
+    """Run TF-IDF selection and print the top configurations."""
     result, path = service.evaluate_tfidf()
     console.print(f"Saved TF-IDF evaluation at {path}")
     console.print(f"Selected weighted score: {result.best_weighted_score:.6f}")
@@ -101,6 +106,7 @@ def _render_tfidf_evaluation(service: FirstAidCopilotService) -> None:
 
 
 def _render_final_evaluation(service: FirstAidCopilotService, args: argparse.Namespace) -> None:
+    """Run the final retrieval and generation evaluation."""
     if args.request_timeout_seconds is not None:
         service.config.request_timeout_seconds = args.request_timeout_seconds
     result = run_final_evaluation(
@@ -151,6 +157,7 @@ def _render_final_evaluation(service: FirstAidCopilotService, args: argparse.Nam
 
 
 def _print_sources(hits: list[RetrievalHit]) -> None:
+    """Print retrieved source metadata."""
     if not hits:
         return
     console.print("\n[bold]Sources[/bold]")
@@ -159,6 +166,7 @@ def _print_sources(hits: list[RetrievalHit]) -> None:
 
 
 def _print_warnings(warnings: list[str]) -> None:
+    """Print response warnings."""
     if not warnings:
         return
     console.print("\n[bold]Warnings[/bold]")
@@ -167,6 +175,7 @@ def _print_warnings(warnings: list[str]) -> None:
 
 
 def _write_stream_text(text: str) -> None:
+    """Write streamed token text to the active console or stdout."""
     if console.record:
         console.print(text, end="")
         return
@@ -175,6 +184,7 @@ def _write_stream_text(text: str) -> None:
 
 
 def _render_query(service: FirstAidCopilotService, args: argparse.Namespace) -> None:
+    """Run a single non-streaming query from CLI arguments."""
     request = QueryRequest(
         query=args.text,
         model=args.model,
@@ -196,6 +206,7 @@ async def _render_query_stream(
     service: FirstAidCopilotService,
     args: argparse.Namespace,
 ) -> None:
+    """Render a streaming query in terminal-friendly sections."""
     request = QueryRequest(
         query=args.text,
         model=args.model,
@@ -270,6 +281,7 @@ async def _render_query_stream(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Dispatch the requested CLI command."""
     parser = _build_parser()
     args = parser.parse_args(argv)
     service = FirstAidCopilotService(AppConfig())

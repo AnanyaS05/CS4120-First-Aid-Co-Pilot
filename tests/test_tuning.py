@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# Tuning tests lock down the TF-IDF grid and dev/test re-ranking behavior.
+
 import pytest
 
 from firstaid_copilot.tuning import (

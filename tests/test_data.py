@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# Data tests verify the retrieval document template and metadata shape.
+
 from firstaid_copilot.data import build_documents, load_split_dataframe
 
 

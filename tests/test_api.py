@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# API tests exercise endpoint shapes without starting Ollama or building real indexes.
+
 from fastapi.testclient import TestClient
 
 from firstaid_copilot.api import create_app
@@ -14,6 +16,7 @@ from firstaid_copilot.schemas import (
 
 
 class FakeService:
+    # Minimal service double matching the methods used by create_app().
     def health_status(self):
         return {
             "status": "ok",
